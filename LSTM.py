@@ -2,14 +2,14 @@ import scipy.io as sio
 import numpy as np
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
-from sklearn.svm import SVC
-from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score
 import scipy.stats
 from sklearn.model_selection import KFold
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import matplotlib.pyplot as plt
+
 
 # Step 1: Preprocessing
 def preprocess_data(eeg_data):
@@ -17,6 +17,12 @@ def preprocess_data(eeg_data):
     #standardization
     scaler = StandardScaler()
     preprocessed_data = scaler.fit_transform(eeg_data)
+    # plt.figure(figsize=(10, 6))
+    # plt.plot(preprocessed_data)
+    # plt.xlabel('Time')
+    # plt.ylabel('Amplitude')
+    # plt.title('Preprocessed EEG Data')
+    # plt.show()
     return preprocessed_data
 
 # Step 2: Feature Extraction
@@ -85,6 +91,7 @@ if __name__ == "__main__":
     print(np.array(data).shape)
     print(data_labels)
     print("")
+
     X = np.array(data)
     y = np.array(data_labels)
     X = np.reshape(X, (X.shape[0], X.shape[1], -1))
@@ -98,9 +105,10 @@ if __name__ == "__main__":
     criterion = nn.BCELoss()
     optimizer = optim.Adam(model.parameters())
 
+
+    accuracies = []
     k = 5
     kf = KFold(n_splits=k)
-    accuracies = []
 
     for train_index, val_index in kf.split(X):
         print("Training on fold:", train_index, "Validating on fold:", val_index)
@@ -115,6 +123,7 @@ if __name__ == "__main__":
         loss.backward()
         optimizer.step()
 
+
         model.eval()
         with torch.no_grad():
             val_outputs = model(X_val_fold.float())
@@ -123,4 +132,4 @@ if __name__ == "__main__":
             accuracies.append(accuracy)
 
     average_accuracy = np.mean(accuracies)
-    print("Average Accuracy:", average_accuracy)
+    print("Average Accuracy:", average_accuracy*100)
