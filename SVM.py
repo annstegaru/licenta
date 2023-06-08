@@ -6,12 +6,30 @@ from sklearn.svm import SVC
 from sklearn.metrics import accuracy_score
 import scipy.stats
 from sklearn.model_selection import KFold
+from sklearn.model_selection import GridSearchCV
+
 
 def preprocess_data(eeg_data):
-    # Standardization
-    scaler = StandardScaler()
-    preprocessed_data = scaler.fit_transform(eeg_data)
-    return preprocessed_data
+    missing_indices = np.where(np.isnan(eeg_data))[0]
+
+# Perform linear interpolation
+    for index in missing_indices:
+        previous_index = index - 1
+        next_index = index + 1
+
+        # Find the previous and next non-missing values
+        while np.isnan(eeg_data[previous_index]):
+            previous_index -= 1
+        while np.isnan(eeg_data[next_index]):
+            next_index += 1
+
+        # Perform linear interpolation
+        eeg_data[index] = (eeg_data[previous_index] + eeg_data[next_index]) / 2
+
+    # scaler = StandardScaler()
+    # preprocessed_data = scaler.fit_transform(eeg_data)
+
+    return eeg_data
 
 def extract_features(eeg_data):
     mean_features = np.mean(eeg_data, axis=1)
@@ -20,7 +38,14 @@ def extract_features(eeg_data):
     skewness_features = scipy.stats.skew(eeg_data, axis=1)
     kurtosis_features = scipy.stats.kurtosis(eeg_data, axis=1)
 
-    extracted_features = np.column_stack((mean_features, std_features, variance_features, skewness_features, kurtosis_features))
+    # tsallis_entropy_features = scipy.stats.entropy(eeg_data, axis=1)
+    # renyi_entropy_features = scipy.stats.entropy(eeg_data, axis=1, base=2)
+    # shannon_entropy_features = scipy.stats.entropy(eeg_data, axis=1, base=np.exp(1))
+    # log_energy_features = np.log(np.sum(np.square(eeg_data), axis=1))
+
+    extracted_features = np.column_stack(
+        (mean_features, std_features, variance_features, skewness_features, kurtosis_features)
+        )
     return extracted_features
 
 def split_data(features, labels, test_size=0.2):
@@ -39,6 +64,37 @@ def read_mat_file(file_name):
         stimuli_features = extract_features(stimuli_data)
         data.append(stimuli_features)
     return data
+
+class SVM:
+    def __init__(self, learning_rate=0.001, lambda_param=0.01, n_iters=1000):
+        self.lr = learning_rate
+        self.lambda_param = lambda_param
+        self.n_iters = n_iters
+        self.w = None
+        self.b = None
+
+    def fit(self, X, y):
+        n_samples, n_features = X.shape
+
+        y_ = np.where(y <= 0, -1, 1)
+
+        self.w = np.zeros(n_features)
+        self.b = 0
+
+        for _ in range(self.n_iters):
+            for idx, x_i in enumerate(X):
+                condition = y_[idx] * (np.dot(x_i, self.w) - self.b) >= 1
+                if condition:
+                    self.w -= self.lr * (2 * self.lambda_param * self.w)
+                else:
+                    self.w -= self.lr * (
+                        2 * self.lambda_param * self.w - np.dot(x_i, y_[idx])
+                    )
+                    self.b -= self.lr * y_[idx]
+
+    def predict(self, X):
+        approx = np.dot(X, self.w) - self.b
+        return np.sign(approx)
 
 if __name__ == "__main__":
     volunteers = ["1", "2", "3", "4", "5", "6"]
@@ -61,25 +117,35 @@ if __name__ == "__main__":
     X = np.reshape(X, (X.shape[0], -1))  # Flatten the input data
 
     accuracies = []
-    epochs = 5  # Number of epochs for training
     k = 5
     kf = KFold(n_splits=k)
 
-    for epoch in range(epochs):
-        print("Epoch:", epoch + 1)
-        for train_index, val_index in kf.split(X):
-            print("Training on fold:", train_index, "Validating on fold:", val_index)
-            X_train_fold, X_val_fold = X[train_index], X[val_index]
-            y_train_fold, y_val_fold = y[train_index], y[val_index]
 
-            # Create and train the SVM classifier
-            svm = SVC()
-            svm.fit(X_train_fold, y_train_fold)
+    for train_index, val_index in kf.split(X):
+        print("Training on fold:", train_index, "Validating on fold:", val_index)
+        X_train_fold, X_val_fold = X[train_index], X[val_index]
+        y_train_fold, y_val_fold = y[train_index], y[val_index]
 
-            # Evaluate on the validation set
-            val_predictions = svm.predict(X_val_fold)
-            accuracy = accuracy_score(y_val_fold, val_predictions)
-            accuracies.append(accuracy)
+        param_grid = {
+            'C': [0.1, 1, 10],
+            'kernel': ['linear', 'rbf'],
+            'gamma': [0.01, 0.1, 1]
+        }
 
-    average_accuracy = np.mean(accuracies)
-    print("Average Accuracy:", average_accuracy * 100)
+        # Create and train the SVM classifier
+        svm = SVC()
+        grid_search = GridSearchCV(svm, param_grid, cv=5)
+        grid_search.fit(X_train_fold, y_train_fold)
+        best_params = grid_search.best_params_
+        print("Best Hyperparameters:", best_params)
+
+        best_svm = SVC(**best_params)
+        best_svm.fit(X_train_fold, y_train_fold)
+
+        # Evaluate on the validation set
+        val_predictions = best_svm.predict(X_val_fold)
+        accuracy = accuracy_score(y_val_fold, val_predictions)
+        accuracies.append(accuracy)
+
+average_accuracy = np.mean(accuracies)
+print(f'Average Accuracy:{average_accuracy* 100:.3f}%')
