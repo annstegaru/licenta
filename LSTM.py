@@ -15,14 +15,30 @@ import matplotlib.pyplot as plt
 def preprocess_data(eeg_data):
 
     #standardization
-    scaler = StandardScaler()
-    preprocessed_data = scaler.fit_transform(eeg_data)
+
     # plt.figure(figsize=(10, 6))
     # plt.plot(preprocessed_data)
     # plt.xlabel('Time')
     # plt.ylabel('Amplitude')
     # plt.title('Preprocessed EEG Data')
     # plt.show()
+    missing_indices = np.where(np.isnan(eeg_data))[0]
+
+# Perform linear interpolation
+    for index in missing_indices:
+        previous_index = index - 1
+        next_index = index + 1
+
+        # Find the previous and next non-missing values
+        while np.isnan(eeg_data[previous_index]):
+            previous_index -= 1
+        while np.isnan(eeg_data[next_index]):
+            next_index += 1
+
+        # Perform linear interpolation
+        eeg_data[index] = (eeg_data[previous_index] + eeg_data[next_index]) / 2
+    scaler = StandardScaler()
+    preprocessed_data = scaler.fit_transform(eeg_data)
     return preprocessed_data
 
 # Step 2: Feature Extraction
