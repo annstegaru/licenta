@@ -123,7 +123,7 @@ if __name__ == "__main__":
 
 
     accuracies = []
-    k = 5
+    k = 6
     kf = KFold(n_splits=k)
 
     for train_index, val_index in kf.split(X):
