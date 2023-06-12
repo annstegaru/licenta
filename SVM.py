@@ -4,9 +4,11 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.svm import SVC
 from sklearn.metrics import accuracy_score
+from sklearn.metrics import mean_squared_error
 import scipy.stats
 from sklearn.model_selection import KFold
 from sklearn.model_selection import GridSearchCV
+from sklearn.decomposition import FastICA
 
 
 def preprocess_data(eeg_data):
@@ -25,9 +27,6 @@ def preprocess_data(eeg_data):
 
         # Perform linear interpolation
         eeg_data[index] = (eeg_data[previous_index] + eeg_data[next_index]) / 2
-
-    # scaler = StandardScaler()
-    # preprocessed_data = scaler.fit_transform(eeg_data)
 
     return eeg_data
 
@@ -65,36 +64,19 @@ def read_mat_file(file_name):
         data.append(stimuli_features)
     return data
 
-class SVM:
-    def __init__(self, learning_rate=0.001, lambda_param=0.01, n_iters=1000):
-        self.lr = learning_rate
-        self.lambda_param = lambda_param
-        self.n_iters = n_iters
-        self.w = None
-        self.b = None
+def apply_ica(data, n_components):
+    ica = FastICA(n_components=n_components)
+    ica.fit(data)
+    components = ica.transform(data)
+    return ica, components
 
-    def fit(self, X, y):
-        n_samples, n_features = X.shape
-
-        y_ = np.where(y <= 0, -1, 1)
-
-        self.w = np.zeros(n_features)
-        self.b = 0
-
-        for _ in range(self.n_iters):
-            for idx, x_i in enumerate(X):
-                condition = y_[idx] * (np.dot(x_i, self.w) - self.b) >= 1
-                if condition:
-                    self.w -= self.lr * (2 * self.lambda_param * self.w)
-                else:
-                    self.w -= self.lr * (
-                        2 * self.lambda_param * self.w - np.dot(x_i, y_[idx])
-                    )
-                    self.b -= self.lr * y_[idx]
-
-    def predict(self, X):
-        approx = np.dot(X, self.w) - self.b
-        return np.sign(approx)
+def remove_artifacts(data, svm, ica):
+    components = ica.transform(data)
+    features = extract_features(components)
+    artifact_labels = svm.predict(features)
+    
+    cleaned_data = ica.inverse_transform(components[artifact_labels == 0])
+    return cleaned_data
 
 if __name__ == "__main__":
     volunteers = ["1", "2", "3", "4", "5", "6"]
@@ -117,9 +99,8 @@ if __name__ == "__main__":
     X = np.reshape(X, (X.shape[0], -1))  # Flatten the input data
 
     accuracies = []
-    k = 5
+    k = 6
     kf = KFold(n_splits=k)
-
 
     for train_index, val_index in kf.split(X):
         print("Training on fold:", train_index, "Validating on fold:", val_index)
@@ -147,5 +128,70 @@ if __name__ == "__main__":
         accuracy = accuracy_score(y_val_fold, val_predictions)
         accuracies.append(accuracy)
 
-average_accuracy = np.mean(accuracies)
-print(f'Average Accuracy:{average_accuracy* 100:.3f}%')
+    average_accuracy = np.mean(accuracies)
+    print(f'Average Accuracy:{average_accuracy* 100:.3f}%')
+
+
+# if __name__ == "__main__":
+#     volunteers = ["1", "2", "3", "4", "5", "6"]
+#     labels = ["A", "B"]
+#     data = []
+#     data_labels = []
+    
+#     for volunteer in volunteers:
+#         for label in labels:
+#             file_name = volunteer + "_" + label + ".mat"
+#             stimuli_features = read_mat_file(file_name)
+            
+#             # Split the EEG data into epochs
+#             epochs = split_eeg_into_epochs(stimuli_features, epoch_duration=2, overlap_ratio=0.5)
+            
+#             # Append the epochs to the data list
+#             data.extend(epochs)
+            
+#             # Generate corresponding labels for each epoch
+#             if label == "A":
+#                 data_labels.extend([1] * len(epochs))
+#             else:
+#                 data_labels.extend([0] * len(epochs))
+    
+#     X = np.array(data)
+#     y = np.array(data_labels)
+#     num_epochs, epoch_length = X.shape
+#     X = np.reshape(X, (num_epochs, epoch_length, 1))
+#     X = np.reshape(X, (num_epochs, -1))
+    
+#     accuracies = []
+    
+#     for epoch_idx in range(len(X)):
+#         print("Training on epoch:", epoch_idx)
+#         X_train = np.delete(X, epoch_idx, axis=0)
+#         y_train = np.delete(y, epoch_idx)
+        
+#         X_val = X[epoch_idx]
+#         y_val = y[epoch_idx]
+        
+#         param_grid = {
+#             'C': [0.1, 1, 10],
+#             'kernel': ['linear', 'rbf'],
+#             'gamma': [0.01, 0.1, 1]
+#         }
+
+#         # Create and train the SVM classifier
+#         svm = SVC()
+#         grid_search = GridSearchCV(svm, param_grid, cv=5)
+#         grid_search.fit(X_train, y_train)
+#         best_params = grid_search.best_params_
+#         print("Best Hyperparameters:", best_params)
+
+#         best_svm = SVC(**best_params)
+#         best_svm.fit(X_train, y_train)
+
+#         # Evaluate on the validation set
+#         val_predictions = best_svm.predict([X_val])
+#         accuracy = accuracy_score([y_val], val_predictions)
+#         accuracies.append(accuracy)
+    
+#     average_accuracy = np.mean(accuracies)
+#     print(f'Average Accuracy: {average_accuracy * 100:.3f}%')
+
