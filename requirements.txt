@@ -4,3 +4,4 @@ pandas
 scikit-learn
 mne
 seaborn
+# pip install -r requirements.txt
