@@ -20,3 +20,6 @@ csv.ipynb
 LSTM.py
 separation_electrodes.ipynb
 statistical.ipynb
+
+SVM.py
+*.mat
